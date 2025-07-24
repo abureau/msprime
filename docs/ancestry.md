@@ -16,10 +16,11 @@ kernelspec:
 :tags: [remove-cell]
 
 import msprime
-from IPython.display import SVG, set_matplotlib_formats
+from IPython.display import SVG
 from matplotlib import pyplot as plt
 import numpy as np
 import networkx as nx
+from matplotlib_inline.backend_inline import set_matplotlib_formats
 
 set_matplotlib_formats("svg")
 
@@ -1145,16 +1146,20 @@ of these models each node has to carry at least one of these three flags.
 ### Recombination events
 
 Additional nodes can also be used to mark recombination events (cross over) as well 
-as gene conversion. A seperate {class}`msprime.NodeType` exists for each:
+as gene conversion. A separate {class}`msprime.NodeType` exists for each:
 {class}`msprime.NodeType.RECOMBINANT` and {class}`msprime.NodeType.GENE_CONVERSION`.
 
 A recombination event results in two extra nodes being recorded, one identifying
 the genome providing the genetic material to the left of the breakpoint and
 the other identifying the genome providing the genetic material to the
-right. For more information on how to set the recombination rate or specify a 
-recombination map: see {ref}`sec_ancestry_recombination`. More information on how 
-to set up a simulation with gene conversion can be found here: 
-{ref}`sec_ancestry_gene_conversion`.
+right. This makes it easy to identify the (possible multiple) segments of genome
+that travel via the left parent versus the right parent, and also means that
+so-called "diamonds" (in which lineages split and immediately rejoin) are retained
+even if edges are {meth}`squashed<tskit.EdgeTable.squash>`.
+
+For more information on how to set the recombination rate or specify a
+recombination map: see {ref}`sec_ancestry_recombination`. To set up a simulation
+with gene conversion, see {ref}`sec_ancestry_gene_conversion`.
 
 (sec_ancestry_record_migrations)=
 
