@@ -48,7 +48,7 @@ def simulate_pedigree(
     num_generations=3,
     sequence_length=1,
     random_seed=42,
-    internal_sample_gen=(None,None,None),
+    sample_gen=None,
 ) -> tskit.TableCollection:
     """
     Simulates pedigree.
@@ -62,6 +62,8 @@ def simulate_pedigree(
     num_generations: Number of generations to attempt to simulate
     sequence_length: The sequence_length of the output tables.
     random_seed: Random seed.
+    sample_gen: Generations at which all individuals are samples. Defaults
+        to the first generation (backwards in time).
     """
     # Fill-in internal_sample_gen with None if shorter than number of generations
     if len(internal_sample_gen) < num_generations:
@@ -72,7 +74,12 @@ def simulate_pedigree(
     builder = msprime.PedigreeBuilder()
 
     time = num_generations - 1
-    curr_gen = [builder.add_individual(time=time,is_sample=internal_sample_gen[0]) for _ in range(num_founders)]
+    if sample_gen is None:
+        sample_gen = [0]
+    curr_gen = [
+        builder.add_individual(time=time, is_sample=time in sample_gen)
+        for _ in range(num_founders)
+    ]
     for generation in range(1, num_generations):
         num_pairs = len(curr_gen) // 2
         if num_pairs == 0 and num_children_prob[0] != 1:
@@ -86,7 +93,9 @@ def simulate_pedigree(
             num_children = rng.choice(len(num_children_prob), p=num_children_prob)
             for _ in range(num_children):
                 parents = np.sort(parents).astype(np.int32)
-                ind_id = builder.add_individual(time=time, parents=parents, is_sample=internal_sample_gen[generation])
+                ind_id = builder.add_individual(
+                    time=time, parents=parents, is_sample=time in sample_gen
+                )
                 curr_gen.append(ind_id)
     return builder.finalise(sequence_length)
 
@@ -563,6 +572,42 @@ class TestSimulateThroughPedigree:
         )
         self.verify(tables, recombination_rate)
 
+    @pytest.mark.parametrize("num_founders", [2, 3, 5])
+    @pytest.mark.parametrize("recombination_rate", [0, 0.01])
+    def test_shallow_internal(self, num_founders, recombination_rate):
+        tables = simulate_pedigree(
+            num_founders=num_founders,
+            num_children_prob=[0, 0, 1],
+            num_generations=2,
+            sequence_length=100,
+            sample_gen=[0, 1],
+        )
+        self.verify(tables, recombination_rate)
+
+    @pytest.mark.parametrize("num_founders", [2, 3, 5])
+    @pytest.mark.parametrize("recombination_rate", [0, 0.01])
+    def test_internal_and_leaf_samples(self, num_founders, recombination_rate):
+        tables = simulate_pedigree(
+            num_founders=num_founders,
+            num_children_prob=[0, 0, 1],
+            num_generations=5,
+            sequence_length=100,
+            sample_gen=[0, 2],
+        )
+        self.verify(tables, recombination_rate)
+
+    @pytest.mark.parametrize("num_founders", [2, 3, 5])
+    @pytest.mark.parametrize("recombination_rate", [0, 0.01])
+    def test_no_leaf_samples(self, num_founders, recombination_rate):
+        tables = simulate_pedigree(
+            num_founders=num_founders,
+            num_children_prob=[0, 0, 1],
+            num_generations=5,
+            sequence_length=100,
+            sample_gen=[1],
+        )
+        self.verify(tables, recombination_rate)
+
     @pytest.mark.parametrize("num_founders", [2, 3, 10, 20])
     @pytest.mark.parametrize("recombination_rate", [0, 0.01])
     def test_deep(self, num_founders, recombination_rate):
@@ -832,8 +877,11 @@ class TestSimulateThroughPedigreeEventByEvent(TestSimulateThroughPedigree):
             recombination_rate=recombination_rate,
             random_seed=1,
         )
+        # print(ts1.tables)
+        # print(ts1.draw_text())
         sim.run(event_chunk=1)
         output_tables = tskit.TableCollection.fromdict(sim.tables.asdict())
+        # print(output_tables)
         output_tables.assert_equals(ts1.tables, ignore_provenance=True)
         return ts1
 

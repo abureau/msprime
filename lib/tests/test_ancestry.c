@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2016-2024 University of Oxford
+** Copyright (C) 2016-2025 University of Oxford
 **
 ** This file is part of msprime.
 **
@@ -18,6 +18,39 @@
 */
 
 #include "testlib.h"
+
+static void
+set_simulation_model(msp_t *sim, int model)
+{
+    int ret;
+
+    switch (model) {
+        case MSP_MODEL_SMC_K:
+            ret = msp_set_simulation_model_smc_k(sim, 0);
+            break;
+        case MSP_MODEL_HUDSON:
+            ret = msp_set_simulation_model_hudson(sim);
+            break;
+        case MSP_MODEL_SMC:
+            ret = msp_set_simulation_model_smc(sim);
+            break;
+        case MSP_MODEL_SMC_PRIME:
+            ret = msp_set_simulation_model_smc_prime(sim);
+            break;
+        case MSP_MODEL_DTWF:
+            ret = msp_set_simulation_model_dtwf(sim);
+            break;
+        case MSP_MODEL_BETA:
+            ret = msp_set_simulation_model_beta(sim, 1.1, 0.5);
+            break;
+        case MSP_MODEL_DIRAC:
+            ret = msp_set_simulation_model_dirac(sim, 0.1, 10);
+            break;
+        default:
+            CU_ASSERT_TRUE_FATAL(false);
+    }
+    CU_ASSERT_EQUAL(ret, 0);
+}
 
 static void
 test_single_locus_simulation(void)
@@ -533,8 +566,9 @@ test_multi_locus_simulation(void)
     int model;
     double migration_matrix[] = { 0, 1, 1, 0 };
     size_t migration_events[4];
-    int models[] = { MSP_MODEL_HUDSON, MSP_MODEL_SMC, MSP_MODEL_SMC_PRIME };
-    const char *model_names[] = { "hudson", "smc", "smc_prime" };
+    int models[]
+        = { MSP_MODEL_HUDSON, MSP_MODEL_SMC, MSP_MODEL_SMC_PRIME, MSP_MODEL_SMC_K };
+    const char *model_names[] = { "hudson", "smc", "smc_prime", "smc_k" };
     const char *model_name;
     bool store_full_arg[] = { true, false };
     size_t j, k;
@@ -571,6 +605,9 @@ test_multi_locus_simulation(void)
                     break;
                 case 2:
                     ret = msp_set_simulation_model_smc_prime(&msp);
+                    break;
+                case 3:
+                    ret = msp_set_simulation_model_smc_k(&msp, 0);
                     break;
             }
             ret = msp_set_store_full_arg(&msp, store_full_arg[k]);
@@ -758,7 +795,7 @@ test_dtwf_multi_locus_simulation(void)
     long seed = 10;
     double migration_matrix[] = { 0, 0.1, 0.1, 0 };
     const char *model_name;
-    size_t num_ca_events, num_re_events;
+    size_t num_ca_events, num_re_events, num_mig_events;
     double t;
     tsk_table_collection_t tables;
     msp_t msp;
@@ -772,6 +809,8 @@ test_dtwf_multi_locus_simulation(void)
     CU_ASSERT_EQUAL_FATAL(msp_set_recombination_rate(&msp, 0.1), 0);
     ret = msp_set_population_configuration(&msp, 0, n, 0, true);
     CU_ASSERT_EQUAL(ret, 0);
+    ret = msp_set_population_configuration(&msp, 1, n, 0, true);
+    CU_ASSERT_EQUAL(ret, 0);
     ret = msp_set_migration_matrix(&msp, 4, migration_matrix);
     CU_ASSERT_EQUAL(ret, 0);
     ret = msp_set_store_migrations(&msp, true);
@@ -782,12 +821,14 @@ test_dtwf_multi_locus_simulation(void)
     CU_ASSERT_STRING_EQUAL(model_name, "dtwf");
 
     ret = msp_run(&msp, DBL_MAX, ULONG_MAX);
+    CU_ASSERT_EQUAL(ret, 0);
     msp_verify(&msp, 0);
     num_ca_events = msp_get_num_common_ancestor_events(&msp);
     num_re_events = msp_get_num_recombination_events(&msp);
+    num_mig_events = tables.migrations.num_rows;
     CU_ASSERT_TRUE(num_ca_events > 0);
     CU_ASSERT_TRUE(num_re_events > 0);
-    CU_ASSERT_EQUAL(ret, 0);
+    CU_ASSERT_TRUE(num_mig_events > 0);
     msp_free(&msp);
     tsk_table_collection_free(&tables);
 
@@ -801,7 +842,12 @@ test_dtwf_multi_locus_simulation(void)
     CU_ASSERT_EQUAL(ret, 0);
     ret = msp_set_population_configuration(&msp, 0, n, 0, true);
     CU_ASSERT_EQUAL(ret, 0);
+    ret = msp_set_population_configuration(&msp, 1, n, 0, true);
+    CU_ASSERT_EQUAL(ret, 0);
     ret = msp_set_migration_matrix(&msp, 4, migration_matrix);
+    CU_ASSERT_EQUAL(ret, 0);
+    ret = msp_set_store_migrations(&msp, true);
+    CU_ASSERT_EQUAL(ret, 0);
     ret = msp_initialise(&msp);
     CU_ASSERT_EQUAL(ret, 0);
     t = 1;
@@ -817,6 +863,7 @@ test_dtwf_multi_locus_simulation(void)
     CU_ASSERT_EQUAL(ret, 0);
     CU_ASSERT_TRUE(num_ca_events == msp_get_num_common_ancestor_events(&msp));
     CU_ASSERT_TRUE(num_re_events == msp_get_num_recombination_events(&msp));
+    CU_ASSERT_TRUE(num_mig_events == tables.migrations.num_rows);
 
     ret = msp_free(&msp);
     CU_ASSERT_EQUAL(ret, 0);
@@ -1299,12 +1346,12 @@ test_mixed_hudson_smc(void)
         CU_ASSERT_FALSE(msp_is_completed(&msp));
         model = msp_get_model(&msp)->type;
         if (j % 2 == 1) {
-            CU_ASSERT_EQUAL(model, MSP_MODEL_SMC);
+            CU_ASSERT_EQUAL(model, MSP_MODEL_SMC_K);
             ret = msp_set_simulation_model_hudson(&msp);
             CU_ASSERT_EQUAL(ret, 0);
         } else {
             CU_ASSERT_EQUAL(model, MSP_MODEL_HUDSON);
-            ret = msp_set_simulation_model_smc(&msp);
+            ret = msp_set_simulation_model_smc_k(&msp, 0);
             CU_ASSERT_EQUAL(ret, 0);
         }
         if (j == 10) {
@@ -1317,6 +1364,56 @@ test_mixed_hudson_smc(void)
     CU_ASSERT_TRUE(j > 10);
     CU_ASSERT_TRUE(msp_get_num_recombination_events(&msp) > 1);
     CU_ASSERT_TRUE(msp_get_num_gene_conversion_events(&msp) > 1);
+
+    ret = msp_finalise_tables(&msp);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+
+    ret = tsk_treeseq_init(&ts, &tables, TSK_TS_INIT_BUILD_INDEXES);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    tsk_treeseq_print_state(&ts, _devnull);
+    tsk_treeseq_free(&ts);
+    tsk_table_collection_free(&tables);
+
+    ret = msp_free(&msp);
+    CU_ASSERT_EQUAL(ret, 0);
+    gsl_rng_free(rng);
+    tsk_table_collection_free(&tables);
+}
+
+static void
+test_mixed_models(void)
+{
+    int ret;
+    uint32_t j;
+    uint32_t n = 20;
+    tsk_table_collection_t tables;
+    tsk_treeseq_t ts;
+    msp_t msp;
+    gsl_rng *rng = safe_rng_alloc();
+    int models[] = { MSP_MODEL_HUDSON, MSP_MODEL_SMC_K, MSP_MODEL_SMC,
+        MSP_MODEL_SMC_PRIME, MSP_MODEL_DTWF, MSP_MODEL_BETA, MSP_MODEL_DIRAC };
+    const int num_models = (int) sizeof(models) / sizeof(*models);
+
+    ret = build_sim(&msp, &tables, rng, 10, 1, NULL, n);
+    CU_ASSERT_EQUAL(ret, 0);
+    ret = msp_set_recombination_rate(&msp, 1);
+    CU_ASSERT_EQUAL(ret, 0);
+    ret = msp_initialise(&msp);
+    CU_ASSERT_EQUAL(ret, 0);
+
+    /* Run for 1 event each for the models, interleaving */
+    j = 0;
+    while ((ret = msp_run(&msp, DBL_MAX, 1)) == MSP_EXIT_MAX_EVENTS) {
+        msp_verify(&msp, 0);
+        CU_ASSERT_FALSE(msp_is_completed(&msp));
+        set_simulation_model(&msp, models[j % num_models]);
+        j++;
+    }
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    CU_ASSERT_TRUE(msp_is_completed(&msp));
+    CU_ASSERT_TRUE(j > 10);
+    CU_ASSERT_TRUE(msp_get_num_recombination_events(&msp) > 1);
+    CU_ASSERT_TRUE(msp_get_num_gene_conversion_events(&msp) == 0);
 
     ret = msp_finalise_tables(&msp);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
@@ -2923,7 +3020,7 @@ test_floating_point_extremes(void)
 }
 
 static void
-test_simulation_replicates(void)
+verify_simulation_replicates(int model)
 {
     int ret;
     uint32_t n = 100;
@@ -2959,17 +3056,18 @@ test_simulation_replicates(void)
     CU_ASSERT_EQUAL(ret, 0);
     ret = msp_set_segment_block_size(&msp, 3);
     CU_ASSERT_EQUAL(ret, 0);
+    ret = msp_set_hull_block_size(&msp, 3);
+    CU_ASSERT_EQUAL(ret, 0);
     ret = msp_initialise(&msp);
     CU_ASSERT_EQUAL(ret, 0);
     ret = mutgen_alloc(&mutgen, rng, &tables, &mut_model, 3);
     CU_ASSERT_EQUAL(ret, 0);
     ret = mutgen_set_rate(&mutgen, mutation_rate);
     CU_ASSERT_EQUAL(ret, 0);
-
     mutgen_print_state(&mutgen, _devnull);
 
     for (j = 0; j < num_replicates; j++) {
-        CU_ASSERT_EQUAL(ret, 0);
+        set_simulation_model(&msp, model);
         ret = msp_run(&msp, DBL_MAX, SIZE_MAX);
         CU_ASSERT_EQUAL(ret, 0);
         msp_verify(&msp, 0);
@@ -2994,6 +3092,53 @@ test_simulation_replicates(void)
     mutation_model_free(&mut_model);
     gsl_rng_free(rng);
     tsk_table_collection_free(&tables);
+}
+
+static void
+test_simulation_replicates_hudson(void)
+{
+    verify_simulation_replicates(MSP_MODEL_HUDSON);
+}
+
+static void
+test_simulation_replicates_smc_k(void)
+{
+    verify_simulation_replicates(MSP_MODEL_SMC_K);
+}
+
+static void
+test_simulation_replicates_smc(void)
+{
+    verify_simulation_replicates(MSP_MODEL_SMC);
+}
+
+static void
+test_simulation_replicates_smc_prime(void)
+{
+    verify_simulation_replicates(MSP_MODEL_SMC_PRIME);
+}
+
+static void
+test_simulation_replicates_dtwf(void)
+{
+    verify_simulation_replicates(MSP_MODEL_DTWF);
+}
+
+static void
+test_simulation_replicates_dirac(void)
+{
+    /* FIXME commenting this out for now as it provokes a bug. See
+     * https://github.com/tskit-dev/msprime/issues/2380 for details.
+     */
+    /* verify_simulation_replicates(MSP_MODEL_DIRAC); */
+}
+
+static void
+test_simulation_replicates_beta(void)
+{
+    /* Also commenting this one out as it's terribly slow. Also fix this
+     * while fixing the DIRAC bug above. */
+    /* verify_simulation_replicates(MSP_MODEL_BETA); */
 }
 
 static void
@@ -3933,16 +4078,15 @@ test_setup_smc_k(void)
     CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = msp_set_recombination_rate(&msp, 0.01);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
-    ret = msp_initialise(&msp);
-    CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = msp_set_simulation_model_smc_k(&msp, 0.0);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    ret = msp_initialise(&msp);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
 
     model = msp_get_model(&msp)->type;
     CU_ASSERT_EQUAL(model, MSP_MODEL_SMC_K);
     model_name = msp_get_model_name(&msp);
     CU_ASSERT_STRING_EQUAL(model_name, "smc_k");
-
     while ((ret = msp_run(&msp, DBL_MAX, 1)) == MSP_EXIT_MAX_EVENTS) {
         msp_verify(&msp, 0);
         CU_ASSERT_FALSE(msp_is_completed(&msp));
@@ -3979,8 +4123,6 @@ test_setup_smc_k_plus(void)
     CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = msp_set_recombination_rate(&msp, 0.01);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
-    ret = msp_initialise(&msp);
-    CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = msp_set_simulation_model_smc_k(&msp, hull_offset);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
     CU_ASSERT_EQUAL(msp.model.params.smc_k_coalescent.hull_offset, hull_offset);
@@ -3989,6 +4131,9 @@ test_setup_smc_k_plus(void)
     CU_ASSERT_EQUAL(model, MSP_MODEL_SMC_K);
     model_name = msp_get_model_name(&msp);
     CU_ASSERT_STRING_EQUAL(model_name, "smc_k");
+
+    ret = msp_initialise(&msp);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
 
     while ((ret = msp_run(&msp, DBL_MAX, 1)) == MSP_EXIT_MAX_EVENTS) {
         msp_verify(&msp, 0);
@@ -4023,18 +4168,33 @@ test_reset_smc_k(void)
     CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = msp_set_recombination_rate(&msp, 0.01);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
-    ret = msp_initialise(&msp);
-    CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = msp_set_simulation_model_smc_k(&msp, 0.0);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
+    ret = msp_initialise(&msp);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+
+    while ((ret = msp_run(&msp, DBL_MAX, 1)) == MSP_EXIT_MAX_EVENTS) {
+        msp_verify(&msp, 0);
+        CU_ASSERT_FALSE(msp_is_completed(&msp));
+    }
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    msp_verify(&msp, 0);
+
     ret = msp_run(&msp, t, ULONG_MAX);
-    CU_ASSERT_EQUAL(ret, MSP_EXIT_MAX_TIME);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    ret = msp_reset(&msp);
+    /* msp_print_state(&msp, stdout); */
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    msp_verify(&msp, 0);
+    ret = msp_set_simulation_model_smc_k(&msp, 0.0);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    /* msp_print_state(&msp, stdout); */
     msp_verify(&msp, 0);
 
     ret = msp_reset(&msp);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
-    ret = msp_set_simulation_model_smc_k(&msp, 0.0);
-    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    msp_verify(&msp, 0);
+
     gsl_rng_set(rng, seed);
     while ((ret = msp_run(&msp, DBL_MAX, 1)) == MSP_EXIT_MAX_EVENTS) {
         msp_verify(&msp, 0);
@@ -4068,9 +4228,9 @@ test_init_smc_k(void)
     CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = msp_set_recombination_rate(&msp, 0.01);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
-    ret = msp_initialise(&msp);
-    CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = msp_set_simulation_model_smc_k(&msp, 0.0);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    ret = msp_initialise(&msp);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
 
     ret = msp_run(&msp, DBL_MAX, ULONG_MAX);
@@ -4105,11 +4265,12 @@ test_smc_k_multipop(void)
     CU_ASSERT_EQUAL(ret, 0);
     ret = msp_add_mass_migration(&msp, t2, 0, 1, 1.0);
     CU_ASSERT_EQUAL(ret, 0);
+    ret = msp_set_simulation_model_smc_k(&msp, 0.0);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
 
     ret = msp_initialise(&msp);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
-    ret = msp_set_simulation_model_smc_k(&msp, 0.0);
-    CU_ASSERT_EQUAL_FATAL(ret, 0);
+    msp_verify(&msp, 0);
 
     ret = msp_run(&msp, DBL_MAX, ULONG_MAX);
     CU_ASSERT_EQUAL(ret, 0);
@@ -4266,10 +4427,12 @@ run_smc_k_gc_simulation(
     CU_ASSERT_EQUAL_FATAL(msp_set_recombination_rate(&msp, recombination_rate), 0);
     CU_ASSERT_EQUAL_FATAL(msp_set_gene_conversion_rate(&msp, gc_rate), 0);
     CU_ASSERT_EQUAL_FATAL(msp_set_gene_conversion_tract_length(&msp, tract_length), 0);
-    ret = msp_initialise(&msp);
-    CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = msp_set_simulation_model_smc_k(&msp, offset);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
+    ret = msp_initialise(&msp);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
+
+    msp_verify(&msp, 0);
 
     ret = msp_run(&msp, DBL_MAX, ULONG_MAX);
     CU_ASSERT_EQUAL(ret, 0);
@@ -4339,6 +4502,7 @@ main(int argc, char **argv)
 
         { "test_mixed_hudson_dtwf", test_mixed_hudson_dtwf },
         { "test_mixed_hudson_smc", test_mixed_hudson_smc },
+        { "test_mixed_models", test_mixed_models },
 
         { "test_gc_single_locus", test_gc_single_locus },
         { "test_gc_tract_lengths", test_gc_tract_lengths },
@@ -4371,7 +4535,15 @@ main(int argc, char **argv)
             test_deactivate_population_event_errors },
         { "test_time_travel_error", test_time_travel_error },
         { "test_floating_point_extremes", test_floating_point_extremes },
-        { "test_simulation_replicates", test_simulation_replicates },
+
+        { "test_simulation_replicates_smc_k", test_simulation_replicates_smc_k },
+        { "test_simulation_replicates_hudson", test_simulation_replicates_hudson },
+        { "test_simulation_replicates_smc", test_simulation_replicates_smc },
+        { "test_simulation_replicates_smc_prime", test_simulation_replicates_smc_prime },
+        { "test_simulation_replicates_dtwf", test_simulation_replicates_dtwf },
+        { "test_simulation_replicates_dirac", test_simulation_replicates_dirac },
+        { "test_simulation_replicates_beta", test_simulation_replicates_beta },
+
         { "test_bottleneck_simulation", test_bottleneck_simulation },
         { "test_large_bottleneck_simulation", test_large_bottleneck_simulation },
 

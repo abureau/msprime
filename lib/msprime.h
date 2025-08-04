@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2015-2024 University of Oxford
+** Copyright (C) 2015-2025 University of Oxford
 **
 ** This file is part of msprime.
 **
@@ -78,19 +78,42 @@ typedef tsk_id_t label_id_t;
 typedef struct segment_t_t {
     tsk_id_t value;
     // TODO change to tsk_id_t  or uint32?  Same for hull_t
-    size_t id; 
+    size_t id;
     double left;
     double right;
     struct segment_t_t *prev;
     struct segment_t_t *next;
+    /* NOTE: In the DTWF model we don't really use the lineage and it would be
+     * better if we explicitly reserved the concept as something only used in
+     * the coalescent models. One thing we could do is to make this member a
+     * union, which was either a lineage (for the coalescent models) or an
+     * "individual" for the DTWF/pedigree code. Thus, we could then separate
+     * the DTWF and coalescent main loops and population storage (it's
+     * pointless using AVL trees for the DTWF code) while keeping the low-level
+     * segment merging code the same. This would require a significant
+     * refactoring (rewriting, really) of the DTWF code, though.
+     */
     struct lineage_t_t *lineage;
 } segment_t;
 
+/* A lineage represents a single ancestral (or sample) genome in the coalescent
+ * models, and keeps track of the head and tail of the segment chains. These
+ * lineages are what are stored in the populations. For the SMC(k) model,
+ * we also store a hull_t object, which keeps track of the information required
+ * to implement the indexes for that model.
+ *
+ * Note that the situation is quite confusing for the DTWF and pedigree models,
+ * which sort-of use the same structures as the coalescent models, but don't
+ * really use them in a meaningful way. So, while we need to define lineages
+ * as well as segments here, they don't actually do anything.
+ */
 typedef struct lineage_t_t {
     population_id_t population;
+    label_id_t label;
     segment_t *head;
     segment_t *tail;
-    label_id_t label;
+    avl_node_t avl_node;
+    /* The hull is only used for the SMCK, and is NULL otherwise */
     struct hull_t_t *hull;
 } lineage_t;
 
@@ -102,16 +125,16 @@ typedef struct {
 typedef struct hull_t_t {
     double left;
     double right;
+    /* We need a reference back to the lineage because we index the hulls in
+     * the smc_k. */
     lineage_t *lineage;
     size_t id;
     uint64_t count;
-    uint64_t insertion_order;
+    uint64_t left_insertion_order;
+    uint64_t right_insertion_order;
+    avl_node_t left_avl_node;
+    avl_node_t right_avl_node;
 } hull_t;
-
-typedef struct {
-    double position;
-    uint64_t insertion_order;
-} hullend_t;
 
 #define MSP_POP_STATE_INACTIVE 0
 #define MSP_POP_STATE_ACTIVE 1
@@ -128,6 +151,10 @@ typedef struct {
     avl_tree_t *ancestors;
     tsk_size_t num_potential_destinations;
     tsk_id_t *potential_destinations;
+    /* These three indexes are only used in the SMCK model. We maintain
+     * two AVL trees in which the hulls are indexed by the left and right
+     * coordinates, respectively, along with a Fenwick tree which maintains
+     * the cumulative count of coalescable lineages */
     avl_tree_t *hulls_left;
     avl_tree_t *hulls_right;
     fenwick_t *coal_mass_index;
@@ -289,7 +316,6 @@ typedef struct _msp_t {
     object_heap_t *segment_heap;
     /* We keep an independent hull heap for each label */
     object_heap_t *hull_heap;
-    object_heap_t *hullend_heap;
     /* The tables used to store the simulation state */
     tsk_table_collection_t *tables;
     tsk_bookmark_t input_position;

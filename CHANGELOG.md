@@ -1,5 +1,28 @@
 # Changelog
 
+
+## [1.4.0] - 2025-XX-XX
+
+**New features**
+
+- The `FixedPedigree` simulation model now supports internal samples ({issue}`1855`,
+  {pr}`2321`, {pr}`2326`, {pr}`2388`, {user}`abureau`, {user}`jeromekelleher`).
+
+- Add support and wheels for Python3.13
+
+**Breaking changes**:
+
+- The `.asdict()` methods for Demography, Population, and Event classes in the
+  demography submodule now return a `__class__` key. This is also stored in their
+  provenance entries, to help recreate demography objects from provenance.
+  ({pr}`{2368}, {user}`hyanwong`)
+
+## [1.3.4] - 2025-05-01
+
+**Bug fixes**:
+
+- Fix wheels on OSX-13 ({pr}`2355`, {user}`benjeffery`)
+
 ## [1.3.3] - 2024-08-07
 
 Bugfix release for issues with Dirac and Beta coalescent models.
@@ -17,7 +40,7 @@ Bugfix release for issues with Dirac and Beta coalescent models.
 
 - Add `record_provenance` argument to `sim_mutations` ({issue}`2272`, {pr}`2273`, {user}`peterlharp`)
 
-- Add support and wheels for Python3.12, drop Python3.8 
+- Add support and wheels for Python3.12, drop Python3.8
 
 ## [1.3.1] - 2024-02-09
 
@@ -32,7 +55,7 @@ Bugfix release for issues with Dirac and Beta coalescent models.
 - Add a `MicrosatMutationModel` mutation model class, that
   represents a generalized interface for constructing mutational
   models appropriate to STRs. In addition 3 specific microsat models
-  are added `SMM`, `TPM`, and `EL2`.  
+  are added `SMM`, `TPM`, and `EL2`.
   ({issue}`2013`, {user}`andrewkern`).
 
 - Raise an error if `log_arg_likelihood` is called on a recombinant tree
